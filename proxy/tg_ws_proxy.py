@@ -810,8 +810,8 @@ async def _handle_client(reader, writer):
 
             # Username/password subnegotiation
             auth_hdr = await asyncio.wait_for(reader.readexactly(1), timeout=10)
-            log.debug("[%s] auth request: %s", label, auth_hdr)
             if auth_hdr[0] != 1:
+                log.debug("[%s] bad auth request ver: %s", label, auth_hdr)
                 writer.write(b'\x01\x01')
                 await writer.drain()
                 writer.close()
@@ -829,7 +829,7 @@ async def _handle_client(reader, writer):
                 writer.close()
                 return
 
-            log.debug("[%s] Auth success", label, client_username, client_password)
+            log.debug("[%s] auth success", label)
             writer.write(b'\x01\x00')  # Success
         else:
             # If have some problems
