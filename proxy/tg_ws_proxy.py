@@ -12,6 +12,7 @@ import sys
 import time
 from typing import Dict, List, Optional, Set, Tuple
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from urllib.parse import quote
 
 
 DEFAULT_PORT = 1080
@@ -1106,7 +1107,7 @@ async def _run(port: int, dc_opt: Dict[int, Optional[str]],
     log.info("=" * 60)
     log.info("  Configure Telegram Desktop:")
     log.info("    SOCKS5 proxy -> %s:%d  (no user/pass)", host, port)
-    log.info(f"    tg://socks/?server={host}&port={port}&user={_auth_user}&pass={_auth_password}")
+    log.info(f"    tg://socks/?server={host}&port={port}&user={quote(_auth_user)}&pass={quote(_auth_password)}")
     log.info("=" * 60)
 
     async def log_stats():
