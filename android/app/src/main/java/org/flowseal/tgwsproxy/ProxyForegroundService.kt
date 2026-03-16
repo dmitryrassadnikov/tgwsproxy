@@ -106,6 +106,7 @@ class ProxyForegroundService : Service() {
             updateNotification(
                 buildNotificationPayload(
                     config = config,
+                    trafficState = TrafficState(running = true),
                     statusText = getString(
                         R.string.notification_running,
                         config.host,
