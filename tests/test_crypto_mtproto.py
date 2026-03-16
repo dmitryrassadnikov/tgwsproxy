@@ -36,6 +36,28 @@ def _encrypt_after_init(init_packet: bytes, plaintext: bytes) -> bytes:
 
 
 class CryptoBackendTests(unittest.TestCase):
+    def test_python_backend_matches_cryptography_stream(self):
+        cryptography_transform = create_aes_ctr_transform(
+            KEY, IV, backend="cryptography")
+        python_transform = create_aes_ctr_transform(KEY, IV, backend="python")
+
+        chunks = [
+            b"",
+            b"\x00" * 16,
+            bytes(range(31)),
+            b"telegram-proxy",
+            b"\xff" * 64,
+        ]
+
+        cryptography_out = b"".join(
+            cryptography_transform.update(chunk) for chunk in chunks
+        ) + cryptography_transform.finalize()
+        python_out = b"".join(
+            python_transform.update(chunk) for chunk in chunks
+        ) + python_transform.finalize()
+
+        self.assertEqual(python_out, cryptography_out)
+
     def test_unknown_backend_raises_error(self):
         with self.assertRaises(ValueError):
             create_aes_ctr_transform(KEY, IV, backend="missing")
