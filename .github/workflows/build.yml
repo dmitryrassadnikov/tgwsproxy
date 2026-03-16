@@ -40,6 +40,41 @@ jobs:
           path: |
             dist/TgWsProxy.exe
 
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-venv libappindicator3-1 gir1.2-appindicator3-0.1 libgtk-3-0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build with PyInstaller
+        run: pyinstaller packaging/linux.spec --noconfirm
+
+      - name: Prepare artifact
+        run: cp dist/tg-ws-proxy tg-ws-proxy
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tg-ws-proxy-linux
+          path: tg-ws-proxy
+
   build-win7:
     runs-on: windows-latest
     steps:
@@ -71,7 +106,7 @@ jobs:
           path: dist/TgWsProxy-win7.exe
 
   release:
-    needs: [build, build-win7]
+    needs: [build, build-win7, build-linux]
     runs-on: ubuntu-latest
     steps:
       - name: Download main build
@@ -86,6 +121,12 @@ jobs:
           name: TgWsProxy-win7
           path: dist
 
+      - name: Download Linux build
+        uses: actions/download-artifact@v4
+        with:
+          name: tg-ws-proxy-linux
+          path: dist
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -93,9 +134,15 @@ jobs:
           name: "TG WS Proxy ${{ github.event.inputs.version }}"
           body: |
             ## TG WS Proxy ${{ github.event.inputs.version }}
+
+            ### Скачать
+            - **Windows:** `TgWsProxy.exe`
+            - **Windows 7:** `TgWsProxy-win7.exe`
+            - **Linux (Debian/Ubuntu):** `tg-ws-proxy` — standalone-бинарник, запуск: `./tg-ws-proxy`
           files: |
             dist/TgWsProxy.exe
             dist/TgWsProxy-win7.exe
+            dist/tg-ws-proxy
           draft: false
           prerelease: false
         env:
