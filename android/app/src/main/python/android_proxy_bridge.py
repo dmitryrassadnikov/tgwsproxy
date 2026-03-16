@@ -18,7 +18,24 @@ def _remember_error(message: str) -> None:
 
 
 def _normalize_dc_ip_list(dc_ip_list: Iterable[object]) -> list[str]:
-    return [str(item).strip() for item in dc_ip_list if str(item).strip()]
+    if dc_ip_list is None:
+        return []
+
+    values: list[object]
+    try:
+        values = list(dc_ip_list)
+    except TypeError:
+        # Chaquopy may expose Kotlin's List<String> as java.util.ArrayList,
+        # which isn't always directly iterable from Python.
+        if hasattr(dc_ip_list, "toArray"):
+            values = list(dc_ip_list.toArray())
+        elif hasattr(dc_ip_list, "size") and hasattr(dc_ip_list, "get"):
+            size = int(dc_ip_list.size())
+            values = [dc_ip_list.get(i) for i in range(size)]
+        else:
+            values = [dc_ip_list]
+
+    return [str(item).strip() for item in values if str(item).strip()]
 
 
 def start_proxy(app_dir: str, host: str, port: int,
