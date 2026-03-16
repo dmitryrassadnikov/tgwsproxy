@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 import webbrowser
+import winreg
 import pystray
 import pyperclip
 import asyncio as _asyncio
@@ -33,6 +34,7 @@ DEFAULT_CONFIG = {
     "host": "127.0.0.1",
     "dc_ip": ["2:149.154.167.220", "4:149.154.167.220"],
     "verbose": False,
+    "autostart": False,
 }
 
 
@@ -162,6 +164,61 @@ def setup_logging(verbose: bool = False):
             "%(asctime)s  %(levelname)-5s  %(message)s",
             datefmt="%H:%M:%S"))
         root.addHandler(ch)
+
+
+def _autostart_reg_name() -> str:
+    return APP_NAME
+
+
+def _autostart_command() -> str:
+    exe = sys.executable
+    return f'"{exe}"'
+
+
+def is_autostart_enabled() -> bool:
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
+            0,
+            winreg.KEY_READ,
+        ) as k:
+            val, _ = winreg.QueryValueEx(k, _autostart_reg_name())
+        stored = str(val).strip()
+        expected = _autostart_command().strip()
+        return stored == expected
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return False
+
+
+def set_autostart_enabled(enabled: bool) -> None:
+    try:
+        with winreg.CreateKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
+        ) as k:
+            if enabled:
+                winreg.SetValueEx(
+                    k,
+                    _autostart_reg_name(),
+                    0,
+                    winreg.REG_SZ,
+                    _autostart_command(),
+                )
+            else:
+                try:
+                    winreg.DeleteValue(k, _autostart_reg_name())
+                except FileNotFoundError:
+                    pass
+    except OSError as exc:
+        log.error("Failed to update autostart: %s", exc)
+        _show_error(
+            "Не удалось изменить автозапуск.\n\n"
+            "Попробуйте запустить приложение от имени пользователя с правами на реестр.\n\n"
+            f"Ошибка: {exc}"
+        )
 
 
 def _make_icon_image(size: int = 64):
@@ -324,7 +381,7 @@ def _edit_config_dialog():
     TEXT_SECONDARY = "#707579"
     FONT_FAMILY = "Segoe UI"
 
-    w, h = 420, 480
+    w, h = 420, 520
     sw = root.winfo_screenwidth()
     sh = root.winfo_screenheight()
     root.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
@@ -375,6 +432,15 @@ def _edit_config_dialog():
                     corner_radius=6, border_width=2,
                     border_color=FIELD_BORDER).pack(anchor="w", pady=(0, 8))
 
+    # Autostart
+    autostart_var = ctk.BooleanVar(value=cfg.get("autostart", False))
+    ctk.CTkCheckBox(frame, text="Автозапуск при включении Windows",
+                    variable=autostart_var, font=(FONT_FAMILY, 13),
+                    text_color=TEXT_PRIMARY,
+                    fg_color=TG_BLUE, hover_color=TG_BLUE_HOVER,
+                    corner_radius=6, border_width=2,
+                    border_color=FIELD_BORDER).pack(anchor="w", pady=(0, 8))
+
     # Info label
     ctk.CTkLabel(frame, text="Изменения вступят в силу после перезапуска прокси.",
                  font=(FONT_FAMILY, 11), text_color=TEXT_SECONDARY,
@@ -410,10 +476,13 @@ def _edit_config_dialog():
             "port": port_val,
             "dc_ip": lines,
             "verbose": verbose_var.get(),
+            "autostart": autostart_var.get(),
         }
         save_config(new_cfg)
         _config.update(new_cfg)
         log.info("Config saved: %s", new_cfg)
+
+        set_autostart_enabled(bool(new_cfg.get("autostart", False)))
 
         _tray_icon.menu = _build_menu()
 
@@ -655,6 +724,8 @@ def run_tray():
     log.info("TG WS Proxy tray app starting")
     log.info("Config: %s", _config)
     log.info("Log file: %s", LOG_FILE)
+
+    set_autostart_enabled(bool(_config.get("autostart", False)))
 
     if pystray is None or Image is None:
         log.error("pystray or Pillow not installed; "
