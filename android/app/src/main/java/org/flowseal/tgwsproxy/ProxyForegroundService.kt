@@ -3,21 +3,29 @@ package org.flowseal.tgwsproxy
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import androidx.core.app.TaskStackBuilder
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 class ProxyForegroundService : Service() {
     private lateinit var settingsStore: ProxySettingsStore
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var trafficJob: Job? = null
+    private var lastTrafficSample: TrafficSample? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -47,7 +55,14 @@ class ProxyForegroundService : Service() {
                     startForeground(
                         NOTIFICATION_ID,
                         buildNotification(
-                            getString(R.string.notification_starting, config.host, config.port),
+                            buildNotificationPayload(
+                                config = config,
+                                statusText = getString(
+                                    R.string.notification_starting,
+                                    config.host,
+                                    config.port,
+                                ),
+                            ),
                         ),
                     )
                     serviceScope.launch {
@@ -60,6 +75,7 @@ class ProxyForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        stopTrafficUpdates()
         serviceScope.cancel()
         runCatching { PythonProxyBridge.stop(this) }
         ProxyServiceState.markStopped()
@@ -68,11 +84,21 @@ class ProxyForegroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun buildNotification(contentText: String): Notification {
+    private fun buildNotification(payload: NotificationPayload): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.notification_title))
-            .setContentText(contentText)
+            .setContentText(payload.statusText)
+            .setSubText(payload.endpointText)
+            .setStyle(
+                NotificationCompat.BigTextStyle().bigText(payload.detailsText),
+            )
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentIntent(createOpenAppPendingIntent())
+            .addAction(
+                0,
+                getString(R.string.notification_action_stop),
+                createStopPendingIntent(),
+            )
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .build()
@@ -85,17 +111,30 @@ class ProxyForegroundService : Service() {
 
         result.onSuccess {
             ProxyServiceState.markStarted(config)
-            updateNotification(getString(R.string.notification_running, config.host, config.port))
+            lastTrafficSample = null
+            updateNotification(
+                buildNotificationPayload(
+                    config = config,
+                    statusText = getString(
+                        R.string.notification_running,
+                        config.host,
+                        config.port,
+                    ),
+                ),
+            )
+            startTrafficUpdates(config)
         }.onFailure { error ->
             ProxyServiceState.markFailed(
                 error.message ?: getString(R.string.proxy_start_failed_generic),
             )
+            stopTrafficUpdates()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
     }
 
     private fun stopProxyRuntime(removeNotification: Boolean, stopService: Boolean) {
+        stopTrafficUpdates()
         runCatching { PythonProxyBridge.stop(this) }
         ProxyServiceState.markStopped()
 
@@ -107,9 +146,147 @@ class ProxyForegroundService : Service() {
         }
     }
 
-    private fun updateNotification(contentText: String) {
+    private fun updateNotification(payload: NotificationPayload) {
         val manager = getSystemService(NotificationManager::class.java)
-        manager.notify(NOTIFICATION_ID, buildNotification(contentText))
+        manager.notify(NOTIFICATION_ID, buildNotification(payload))
+    }
+
+    private fun buildNotificationPayload(
+        config: NormalizedProxyConfig,
+        statusText: String,
+    ): NotificationPayload {
+        val trafficState = readTrafficState()
+        val endpointText = getString(R.string.notification_endpoint, config.host, config.port)
+        val detailsText = getString(
+            R.string.notification_details,
+            config.dcIpList.size,
+            formatRate(trafficState.upBytesPerSecond),
+            formatRate(trafficState.downBytesPerSecond),
+            formatBytes(trafficState.totalBytesUp),
+            formatBytes(trafficState.totalBytesDown),
+        )
+        return NotificationPayload(
+            statusText = statusText,
+            endpointText = endpointText,
+            detailsText = detailsText,
+        )
+    }
+
+    private fun startTrafficUpdates(config: NormalizedProxyConfig) {
+        stopTrafficUpdates()
+        trafficJob = serviceScope.launch {
+            while (isActive && ProxyServiceState.isRunning.value) {
+                updateNotification(
+                    buildNotificationPayload(
+                        config = config,
+                        statusText = getString(
+                            R.string.notification_running,
+                            config.host,
+                            config.port,
+                        ),
+                    ),
+                )
+                delay(1000)
+            }
+        }
+    }
+
+    private fun stopTrafficUpdates() {
+        trafficJob?.cancel()
+        trafficJob = null
+        lastTrafficSample = null
+    }
+
+    private fun readTrafficState(): TrafficState {
+        val nowMillis = System.currentTimeMillis()
+        val current = PythonProxyBridge.getTrafficStats(this)
+        val previous = lastTrafficSample
+        lastTrafficSample = TrafficSample(
+            bytesUp = current.bytesUp,
+            bytesDown = current.bytesDown,
+            timestampMillis = nowMillis,
+        )
+
+        if (!current.running || previous == null) {
+            return TrafficState(
+                upBytesPerSecond = 0L,
+                downBytesPerSecond = 0L,
+                totalBytesUp = current.bytesUp,
+                totalBytesDown = current.bytesDown,
+            )
+        }
+
+        val elapsedMillis = (nowMillis - previous.timestampMillis).coerceAtLeast(1L)
+        val upDelta = (current.bytesUp - previous.bytesUp).coerceAtLeast(0L)
+        val downDelta = (current.bytesDown - previous.bytesDown).coerceAtLeast(0L)
+        return TrafficState(
+            upBytesPerSecond = (upDelta * 1000L) / elapsedMillis,
+            downBytesPerSecond = (downDelta * 1000L) / elapsedMillis,
+            totalBytesUp = current.bytesUp,
+            totalBytesDown = current.bytesDown,
+        )
+    }
+
+    private fun formatRate(bytesPerSecond: Long): String = formatBytes(bytesPerSecond)
+
+    private fun formatBytes(bytes: Long): String {
+        val units = arrayOf("B", "KB", "MB", "GB")
+        var value = bytes.toDouble().coerceAtLeast(0.0)
+        var unitIndex = 0
+
+        while (value >= 1024.0 && unitIndex < units.lastIndex) {
+            value /= 1024.0
+            unitIndex += 1
+        }
+
+        return if (unitIndex == 0) {
+            String.format(Locale.US, "%.0f %s", value, units[unitIndex])
+        } else {
+            String.format(Locale.US, "%.1f %s", value, units[unitIndex])
+        }
+    }
+
+    private fun createOpenAppPendingIntent(): PendingIntent {
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+            ?.apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                )
+            }
+            ?: Intent(this, MainActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                )
+            }
+
+        return TaskStackBuilder.create(this)
+            .addNextIntentWithParentStack(launchIntent)
+            .getPendingIntent(
+                1,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            ?: PendingIntent.getActivity(
+                this,
+                1,
+                launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+    }
+
+    private fun createStopPendingIntent(): PendingIntent {
+        val intent = Intent(this, ProxyForegroundService::class.java).apply {
+            action = ACTION_STOP
+        }
+        return PendingIntent.getService(
+            this,
+            2,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
     }
 
     private fun createNotificationChannel() {
@@ -149,3 +326,22 @@ class ProxyForegroundService : Service() {
         }
     }
 }
+
+private data class NotificationPayload(
+    val statusText: String,
+    val endpointText: String,
+    val detailsText: String,
+)
+
+private data class TrafficSample(
+    val bytesUp: Long,
+    val bytesDown: Long,
+    val timestampMillis: Long,
+)
+
+private data class TrafficState(
+    val upBytesPerSecond: Long,
+    val downBytesPerSecond: Long,
+    val totalBytesUp: Long,
+    val totalBytesDown: Long,
+)

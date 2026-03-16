@@ -1,10 +1,12 @@
 import os
 import threading
 import time
+import json
 from pathlib import Path
 from typing import Iterable, Optional
 
 from proxy.app_runtime import ProxyAppRuntime
+import proxy.tg_ws_proxy as tg_ws_proxy
 
 
 _RUNTIME_LOCK = threading.RLock()
@@ -18,7 +20,24 @@ def _remember_error(message: str) -> None:
 
 
 def _normalize_dc_ip_list(dc_ip_list: Iterable[object]) -> list[str]:
-    return [str(item).strip() for item in dc_ip_list if str(item).strip()]
+    if dc_ip_list is None:
+        return []
+
+    values: list[object]
+    try:
+        values = list(dc_ip_list)
+    except TypeError:
+        # Chaquopy may expose Kotlin's List<String> as java.util.ArrayList,
+        # which isn't always directly iterable from Python.
+        if hasattr(dc_ip_list, "toArray"):
+            values = list(dc_ip_list.toArray())
+        elif hasattr(dc_ip_list, "size") and hasattr(dc_ip_list, "get"):
+            size = int(dc_ip_list.size())
+            values = [dc_ip_list.get(i) for i in range(size)]
+        else:
+            values = [dc_ip_list]
+
+    return [str(item).strip() for item in values if str(item).strip()]
 
 
 def start_proxy(app_dir: str, host: str, port: int,
@@ -32,6 +51,7 @@ def start_proxy(app_dir: str, host: str, port: int,
 
         _LAST_ERROR = None
         os.environ["TG_WS_PROXY_CRYPTO_BACKEND"] = "python"
+        tg_ws_proxy.reset_stats()
 
         runtime = ProxyAppRuntime(
             Path(app_dir),
@@ -90,3 +110,12 @@ def is_running() -> bool:
 
 def get_last_error() -> Optional[str]:
     return _LAST_ERROR
+
+
+def get_runtime_stats_json() -> str:
+    with _RUNTIME_LOCK:
+        running = bool(_RUNTIME and _RUNTIME.is_proxy_running())
+
+    payload = dict(tg_ws_proxy.get_stats_snapshot())
+    payload["running"] = running
+    return json.dumps(payload)
