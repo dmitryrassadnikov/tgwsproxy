@@ -14,22 +14,9 @@ import asyncio as _asyncio
 from pathlib import Path
 from typing import Dict, Optional
 
-try:
-    import pystray
-except Exception:
-    pystray = None
-
-try:
-    import customtkinter as ctk
-except Exception:
-    ctk = None
-
-try:
-    from PIL import Image, ImageDraw, ImageFont
-except Exception:
-    Image = None
-    ImageDraw = None
-    ImageFont = None
+import pystray
+import customtkinter as ctk
+from PIL import Image, ImageDraw, ImageFont
 
 import proxy.tg_ws_proxy as tg_ws_proxy
 
@@ -278,23 +265,11 @@ def restart_proxy():
 
 
 def _show_error(text: str, title: str = "TG WS Proxy — Ошибка"):
-    if sys.platform == "win32":
-        try:
-            ctypes.windll.user32.MessageBoxW(0, text, title, 0x10)
-            return
-        except Exception:
-            pass
-    print(f"{title}: {text}", file=sys.stderr)
+    ctypes.windll.user32.MessageBoxW(0, text, title, 0x10)
 
 
 def _show_info(text: str, title: str = "TG WS Proxy"):
-    if sys.platform == "win32":
-        try:
-            ctypes.windll.user32.MessageBoxW(0, text, title, 0x40)
-            return
-        except Exception:
-            pass
-    print(f"{title}: {text}", file=sys.stdout)
+    ctypes.windll.user32.MessageBoxW(0, text, title, 0x40)
 
 
 def _on_open_in_telegram(icon=None, item=None):
@@ -681,13 +656,6 @@ def run_tray():
     log.info("TG WS Proxy tray app starting")
     log.info("Config: %s", _config)
     log.info("Log file: %s", LOG_FILE)
-
-    if ctk is None:
-        _show_error(
-            "Для tray-режима требуется tkinter (Tcl/Tk).\n\n"
-            "Windows: переустановите Python с включённым Tcl/Tk.\n"
-            "Linux: установите пакет python3-tk / tk.")
-        return
 
     if pystray is None or Image is None:
         log.error("pystray or Pillow not installed; "
