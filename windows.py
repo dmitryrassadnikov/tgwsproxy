@@ -504,6 +504,8 @@ def _show_first_run():
     root.title("TG WS Proxy")
     root.resizable(False, False)
     root.attributes("-topmost", True)
+    icon_path = str(Path(__file__).parent / "icon.ico")
+    root.iconbitmap(icon_path)
 
     w, h = 520, 440
     sw = root.winfo_screenwidth()
