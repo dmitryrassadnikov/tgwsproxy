@@ -44,8 +44,15 @@ Telegram Desktop → SOCKS5 (127.0.0.1:1080) → TG WS Proxy → WSS (kws*.web.t
 
 ## Установка из исходников
 
+> Для Windows:
+
 ```bash
 pip install -r requirements.txt
+```
+
+> Для MacOS:
+```bash
+pip install -r requirements-macos.txt
 ```
 
 ### Windows (Tray-приложение)
@@ -54,7 +61,12 @@ pip install -r requirements.txt
 python windows.py
 ```
 
-### Консольный режим
+### MacOS (Tray-приложение)
+
+1. Скачать последний релиз .dmg
+2. Открыть образ и перенести файл `tg_ws_proxy` в папку `Applications`
+
+### Консольный режим (Windows)
 
 ```bash
 python proxy/tg_ws_proxy.py [--port PORT] [--dc-ip DC:IP ...] [-v]
@@ -79,6 +91,11 @@ python proxy/tg_ws_proxy.py --port 9050 --dc-ip 1:149.154.175.205 --dc-ip 2:149.
 
 # С подробным логированием
 python proxy/tg_ws_proxy.py -v
+```
+
+### Консольный режим (MacOS)
+```bash
+python macos.py
 ```
 
 ## Настройка Telegram Desktop
@@ -111,13 +128,26 @@ Tray-приложение хранит данные в `%APPDATA%/TgWsProxy`:
 }
 ```
 
-## Автоматическая сборка
+## Автоматическая сборка ()
 
 Проект содержит спецификацию PyInstaller ([`windows.spec`](packaging/windows.spec)) и GitHub Actions workflow ([`.github/workflows/build.yml`](.github/workflows/build.yml)) для автоматической сборки.
+
+> Для Windows:
 
 ```bash
 pip install pyinstaller
 pyinstaller packaging/windows.spec
+```
+
+> Для MacOS:
+```bash
+pip install pyinstaller
+pyinstaller packaging/macos.spec
+```
+
+### Создание DMG-образа (MacOS)
+```bash
+/bin/bash /Users/xily/PycharmProjects/tg-ws-proxy/packaging/create_dmg.sh
 ```
 
 ## Лицензия
