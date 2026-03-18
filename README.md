@@ -47,6 +47,16 @@ Telegram Desktop → SOCKS5 (127.0.0.1:1080) → TG WS Proxy → WSS → Telegra
 2. Перенести **TG WS Proxy.app** в папку **Applications**
 3. При первом запуске macOS может попросить подтвердить открытие: **Системные настройки → Конфиденциальность и безопасность → Всё равно открыть**
 
+### Linux
+Перейдите на [страницу релизов](https://github.com/Flowseal/tg-ws-proxy/releases) и скачайте **`TgWsProxy`** (бинарный файл для x86_64).
+
+```bash
+chmod +x TgWsProxy
+./TgWsProxy
+```
+
+При первом запуске откроется окно с инструкцией. Приложение работает в системном трее (требуется AppIndicator).
+
 ## Установка из исходников
 
 ### Консольный proxy
@@ -77,6 +87,13 @@ tg-ws-proxy-tray-win
 ```bash
 pip install -e ".[macos]"
 tg-ws-proxy-tray-macos
+```
+
+### Linux
+
+```bash
+pip install -e ".[linux]"
+tg-ws-proxy-tray-linux
 ```
 
 ### Консольный режим из исходников
@@ -137,7 +154,10 @@ tg-ws-proxy-tray-macos = "macos:main"
 
 ## Конфигурация
 
-Tray-приложение хранит данные в `%APPDATA%/TgWsProxy`:
+Tray-приложение хранит данные в:
+- **Windows:** `%APPDATA%/TgWsProxy`
+- **macOS:** `~/Library/Application Support/TgWsProxy`
+- **Linux:** `~/.config/TgWsProxy` (или `$XDG_CONFIG_HOME/TgWsProxy`)
 
 ```json
 {
@@ -152,13 +172,14 @@ Tray-приложение хранит данные в `%APPDATA%/TgWsProxy`:
 
 ## Автоматическая сборка
 
-Проект содержит спецификации PyInstaller ([`packaging/windows.spec`](packaging/windows.spec), [`packaging/macos.spec`](packaging/macos.spec)) и GitHub Actions workflow ([`.github/workflows/build.yml`](.github/workflows/build.yml)) для автоматической сборки.
+Проект содержит спецификации PyInstaller ([`packaging/windows.spec`](packaging/windows.spec), [`packaging/macos.spec`](packaging/macos.spec), [`packaging/linux.spec`](packaging/linux.spec)) и GitHub Actions workflow ([`.github/workflows/build.yml`](.github/workflows/build.yml)) для автоматической сборки.
 
 Минимально поддерживаемые версии ОС для текущих бинарных сборок:
 - Windows 10+ для `TgWsProxy.exe`
 - Windows 7 для `TgWsProxy-win7.exe`
 - Intel macOS 10.15+
 - Apple Silicon macOS 11.0+
+- Linux x86_64 (требуется AppIndicator для системного трея)
 
 ## Лицензия
 
