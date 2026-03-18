@@ -45,6 +45,29 @@ jobs:
           path: |
             dist/TgWsProxy.exe
 
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Build signed universal macOS app
+        run: bash packaging/build_macos_universal.sh
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: TgWsProxy-macos-universal
+          path: |
+            dist/TgWsProxy.app
+            dist/TgWsProxy-macos-universal.zip
+
   build-win7:
     runs-on: windows-latest
     steps:
@@ -76,7 +99,7 @@ jobs:
           path: dist/TgWsProxy-win7.exe
 
   release:
-    needs: [build, build-win7]
+    needs: [build, build-win7, build-macos]
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.make_release == 'true' }}
     steps:
@@ -92,6 +115,12 @@ jobs:
           name: TgWsProxy-win7
           path: dist
 
+      - name: Download macOS build
+        uses: actions/download-artifact@v4
+        with:
+          name: TgWsProxy-macos-universal
+          path: dist/macos
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -102,6 +131,7 @@ jobs:
           files: |
             dist/TgWsProxy.exe
             dist/TgWsProxy-win7.exe
+            dist/macos/TgWsProxy-macos-universal.zip
           draft: false
           prerelease: false
         env:

@@ -33,6 +33,9 @@ Telegram Desktop → SOCKS5 (127.0.0.1:1080) → TG WS Proxy → WSS (kws*.web.t
 ### Windows
 Перейдите на [страницу релизов](https://github.com/Flowseal/tg-ws-proxy/releases) и скачайте **`TgWsProxy.exe`**. Он собирается автоматически через [Github Actions](https://github.com/Flowseal/tg-ws-proxy/actions) из открытого исходного кода.
 
+### macOS
+На странице релизов также публикуется **`TgWsProxy-macos-universal.zip`** с `.app`-пакетом для Apple Silicon и Intel. Приложение подписывается ad-hoc и не требует App Store.
+
 При первом запуске откроется окно с инструкцией по подключению Telegram Desktop. Приложение сворачивается в системный трей.
 
 **Меню трея:**
@@ -48,10 +51,10 @@ Telegram Desktop → SOCKS5 (127.0.0.1:1080) → TG WS Proxy → WSS (kws*.web.t
 pip install -r requirements.txt
 ```
 
-### Windows (Tray-приложение)
+### Windows или macOS (Tray-приложение)
 
 ```bash
-python windows.py
+python app.py
 ```
 
 ### Консольный режим
@@ -98,7 +101,10 @@ python proxy/tg_ws_proxy.py -v
 
 ## Конфигурация
 
-Tray-приложение хранит данные в `%APPDATA%/TgWsProxy`:
+Tray-приложение хранит данные:
+
+- Windows: `%APPDATA%/TgWsProxy`
+- macOS: `~/Library/Application Support/TgWsProxy`
 
 ```json
 {
@@ -113,11 +119,15 @@ Tray-приложение хранит данные в `%APPDATA%/TgWsProxy`:
 
 ## Автоматическая сборка
 
-Проект содержит спецификацию PyInstaller ([`windows.spec`](packaging/windows.spec)) и GitHub Actions workflow ([`.github/workflows/build.yml`](.github/workflows/build.yml)) для автоматической сборки.
+Проект содержит спецификации PyInstaller для Windows и macOS и GitHub Actions workflow ([`.github/workflows/build.yml`](.github/workflows/build.yml)) для автоматической сборки.
 
 ```bash
 pip install pyinstaller
 pyinstaller packaging/windows.spec
+```
+
+```bash
+bash packaging/build_macos_universal.sh
 ```
 
 ## Лицензия

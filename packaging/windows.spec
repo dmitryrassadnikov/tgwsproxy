@@ -10,7 +10,7 @@ import customtkinter
 ctk_path = os.path.dirname(customtkinter.__file__)
 
 a = Analysis(
-    [os.path.join(os.path.dirname(SPEC), os.pardir, 'windows.py')],
+    [os.path.join(os.path.dirname(SPEC), os.pardir, 'app.py')],
     pathex=[],
     binaries=[],
     datas=[(ctk_path, 'customtkinter/')],
