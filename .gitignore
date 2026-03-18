@@ -4,8 +4,13 @@ __pycache__/
 *.pyo
 *.egg-info/
 .venv-macos-build/
-dist/
-build/
+dist/*
+!dist/TgWsProxy.app/
+!dist/TgWsProxy.app/**
+!dist/TgWsProxy-macos-universal.zip
+build/*
+!build/macos/
+!build/macos/**
 *.spec.bak
 
 # PyInstaller
