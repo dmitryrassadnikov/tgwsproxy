@@ -63,8 +63,11 @@ python windows.py
 
 ### MacOS (Tray-приложение)
 
-1. Скачать последний релиз .dmg
-2. Открыть образ и перенести файл `tg_ws_proxy` в папку `Applications`
+Перейдите на [страницу релизов](https://github.com/Flowseal/tg-ws-proxy/releases) и скачайте **`TgWsProxy.dmg`** — универсальная сборка для Apple Silicon и Intel.
+
+1. Открыть образ
+2. Перенести **TG WS Proxy.app** в папку **Applications**
+3. При первом запуске macOS может попросить подтвердить открытие: **Системные настройки → Конфиденциальность и безопасность → Всё равно открыть**
 
 ### Консольный режим (Windows)
 
@@ -128,7 +131,7 @@ Tray-приложение хранит данные в `%APPDATA%/TgWsProxy`:
 }
 ```
 
-## Автоматическая сборка ()
+## Автоматическая сборка
 
 Проект содержит спецификацию PyInstaller ([`windows.spec`](packaging/windows.spec)) и GitHub Actions workflow ([`.github/workflows/build.yml`](.github/workflows/build.yml)) для автоматической сборки.
 
@@ -142,13 +145,22 @@ pyinstaller packaging/windows.spec
 > Для MacOS:
 ```bash
 pip install pyinstaller
+packaging/create_icon.sh
 pyinstaller packaging/macos.spec
 ```
 
-### Создание DMG-образа (MacOS)
+> Создать универсальный DMG (local-тест с двумя копями одной архитектуры):
 ```bash
-/bin/bash /Users/xily/PycharmProjects/tg-ws-proxy/packaging/create_dmg.sh
+pip install pyinstaller
+packaging/create_icon.sh
+pyinstaller packaging/macos.spec --noconfirm
+cp -R "dist/TG WS Proxy.app" "dist/TG WS Proxy-intel.app"
+packaging/merge_universal2.sh \
+    "dist/TG WS Proxy.app" \
+    "dist/TG WS Proxy-intel.app" \
+    "dist/TG WS Proxy-universal.app"
 ```
+- В результате в папке `dist/` появятся `.app` под текущую архитектуру и `TgWsProxy.dmg`.
 
 ## Лицензия
 
