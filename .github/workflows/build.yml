@@ -358,13 +358,13 @@ jobs:
           name: TgWsProxy
           path: dist
 
-      - name: Download Win7 build
+      - name: Download Win7  build
         uses: actions/download-artifact@v4
         with:
           name: TgWsProxy-win7
           path: dist
 
-      - name: Download Win7 (32bin) build
+      - name: Download Win7 (32bit) build
         uses: actions/download-artifact@v4
         with:
           name: TgWsProxy-win7-32bit
