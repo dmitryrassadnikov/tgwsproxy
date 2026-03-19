@@ -78,6 +78,37 @@ jobs:
           name: TgWsProxy-win7
           path: dist/TgWsProxy_windows_7.exe
 
+  build-win7-32bit:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.8 32-bit (Win7 x86)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.8"
+          architecture: "x86"
+          cache: "pip"
+
+      - name: Install dependencies (Win7 x86)
+        run: pip install ".[win7]"
+
+      - name: Install PyInstaller (Win7 x86)
+        run: pip install "pyinstaller==5.13.2"
+
+      - name: Build EXE with PyInstaller (Win7 32-bit)
+        run: pyinstaller packaging/windows.spec --noconfirm
+
+      - name: Rename artifact
+        run: mv dist/TgWsProxy.exe dist/TgWsProxy_windows_7_32bit.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TgWsProxy-win7-32bit
+          path: dist/TgWsProxy_windows_7_32bit.exe
+
   build-macos:
     runs-on: macos-latest
     steps:
@@ -317,7 +348,7 @@ jobs:
             dist/TgWsProxy_linux_amd64.deb
 
   release:
-    needs: [build, build-win7, build-macos, build-linux]
+    needs: [build, build-win7, build-win7-32bit,build-macos, build-linux]
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.make_release == 'true' }}
     steps:
@@ -331,6 +362,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: TgWsProxy-win7
+          path: dist
+
+      - name: Download Win7 (32bin) build
+        uses: actions/download-artifact@v4
+        with:
+          name: TgWsProxy-win7-32bit
           path: dist
 
       - name: Download macOS build
@@ -355,6 +392,7 @@ jobs:
           files: |
             dist/TgWsProxy_windows.exe
             dist/TgWsProxy_windows_7.exe
+            dist/TgWsProxy_windows_7_32bit.exe
             dist/TgWsProxy_macos_universal.dmg
             dist/TgWsProxy_linux_amd64
             dist/TgWsProxy_linux_amd64.deb
