@@ -48,7 +48,7 @@ jobs:
           path: |
             dist/TgWsProxy_windows.exe
 
-  build-win7:
+  build-win7-64bit:
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -58,6 +58,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.8"
+          architecture: "x64"
           cache: "pip"
 
       - name: Install dependencies (Win7-compatible)
@@ -75,8 +76,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TgWsProxy-win7
-          path: dist/TgWsProxy_windows_7.exe
+          name: TgWsProxy-win7-64bit
+          path: dist/TgWsProxy_windows_7_64bit.exe
 
   build-win7-32bit:
     runs-on: windows-latest
@@ -348,7 +349,7 @@ jobs:
             dist/TgWsProxy_linux_amd64.deb
 
   release:
-    needs: [build, build-win7, build-win7-32bit,build-macos, build-linux]
+    needs: [build, build-win7-64bit, build-win7-32bit,build-macos, build-linux]
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.make_release == 'true' }}
     steps:
@@ -358,10 +359,10 @@ jobs:
           name: TgWsProxy
           path: dist
 
-      - name: Download Win7  build
+      - name: Download Win7 (64bit) build
         uses: actions/download-artifact@v4
         with:
-          name: TgWsProxy-win7
+          name: TgWsProxy-win7-64bit
           path: dist
 
       - name: Download Win7 (32bit) build
@@ -391,7 +392,7 @@ jobs:
             ## TG WS Proxy ${{ github.event.inputs.version }}
           files: |
             dist/TgWsProxy_windows.exe
-            dist/TgWsProxy_windows_7.exe
+            dist/TgWsProxy_windows_7_64bit.exe
             dist/TgWsProxy_windows_7_32bit.exe
             dist/TgWsProxy_macos_universal.dmg
             dist/TgWsProxy_linux_amd64
