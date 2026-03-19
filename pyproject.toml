@@ -24,15 +24,10 @@ keywords = [
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
-  "Environment :: MacOS X :: Cocoa",
-  "Environment :: Win32 (MS Windows)",
-  "Environment :: X11 Applications :: GTK",
   "Intended Audience :: Customer Service",
   "Programming Language :: Python :: 3",
   "License :: OSI Approved :: MIT License",
-  "Operating System :: MacOS :: MacOS X",
-  "Operating System :: Microsoft :: Windows",
-  "Operating System :: POSIX :: Linux",
+  "Operating System :: OS Independent",
   "Topic :: System :: Networking :: Firewalls",
 ]
 
