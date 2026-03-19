@@ -187,7 +187,8 @@ Tray-приложение хранит данные в:
 Минимально поддерживаемые версии ОС для текущих бинарных сборок:
 
 - Windows 10+ для `TgWsProxy_windows.exe`
-- Windows 7 для `TgWsProxy_windows_7.exe`
+- Windows 7 (x64) для `TgWsProxy_windows_7_64bit.exe`
+- Windows 7 (x32) для `TgWsProxy_windows_7_32bit.exe`
 - Intel macOS 10.15+
 - Apple Silicon macOS 11.0+
 - Linux x86_64 (требуется AppIndicator для системного трея)
