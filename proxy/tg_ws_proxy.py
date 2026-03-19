@@ -12,14 +12,15 @@ import sys
 import time
 from typing import Dict, List, Optional, Set, Tuple
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from urllib.parse import quote
 
 
 DEFAULT_PORT = 1080
 log = logging.getLogger('tg-ws-proxy')
 
 _TCP_NODELAY = True
-_RECV_BUF = 256 * 1024
-_SEND_BUF = 256 * 1024
+_RECV_BUF = 131072
+_SEND_BUF = 131072
 _WS_POOL_SIZE = 4
 _WS_POOL_MAX_AGE = 120.0
 
@@ -68,12 +69,10 @@ _IP_TO_DC: Dict[str, Tuple[int, bool]] = {
     '91.105.192.100': (203, False),
 }
 
-# This case might work but not actually sure
-_DC_OVERRIDES: Dict[int, int] = {
-    203: 2
-}
-
 _dc_opt: Dict[int, Optional[str]] = {}
+
+_auth_user = ''
+_auth_password = ''
 
 # DCs where WS is known to fail (302 redirect)
 # Raw TCP fallback will be used instead
@@ -82,8 +81,7 @@ _ws_blacklist: Set[Tuple[int, bool]] = set()
 
 # Rate-limit re-attempts per (dc, is_media)
 _dc_fail_until: Dict[Tuple[int, bool], float] = {}
-_DC_FAIL_COOLDOWN = 30.0   # seconds to keep reduced WS timeout after failure
-_WS_FAIL_TIMEOUT = 2.0    # quick-retry timeout after a recent WS failure
+_DC_FAIL_COOLDOWN = 60.0  # seconds
 
 
 _ssl_ctx = ssl.create_default_context()
@@ -383,7 +381,7 @@ def _dc_from_init(data: bytes) -> Tuple[Optional[int], bool]:
                   proto, dc_raw, plain.hex())
         if proto in (0xEFEFEFEF, 0xEEEEEEEE, 0xDDDDDDDD):
             dc = abs(dc_raw)
-            if 1 <= dc <= 5 or dc == 203:
+            if 1 <= dc <= 1000:
                 return dc, (dc_raw < 0)
     except Exception as exc:
         log.debug("DC extraction failed: %s", exc)
@@ -470,10 +468,16 @@ class _MsgSplitter:
 
 
 def _ws_domains(dc: int, is_media) -> List[str]:
-    dc = _DC_OVERRIDES.get(dc, dc)
+    """
+    Return domain names to try for WebSocket connection to a DC.
+
+    DC 1-5:  kws{N}[-1].web.telegram.org
+    DC >5:   kws{N}[-1].telegram.org
+    """
+    base = 'telegram.org' if dc > 5 else 'web.telegram.org'
     if is_media is None or is_media:
-        return [f'kws{dc}-1.web.telegram.org', f'kws{dc}.web.telegram.org']
-    return [f'kws{dc}.web.telegram.org', f'kws{dc}-1.web.telegram.org']
+        return [f'kws{dc}-1.{base}', f'kws{dc}.{base}']
+    return [f'kws{dc}.{base}', f'kws{dc}-1.{base}']
 
 
 class Stats:
@@ -614,7 +618,7 @@ async def _bridge_ws(reader, writer, ws: RawWebSocket, label,
         nonlocal up_bytes, up_packets
         try:
             while True:
-                chunk = await reader.read(65536)
+                chunk = await reader.read(131072)
                 if not chunk:
                     break
                 _stats.bytes_up += len(chunk)
@@ -787,10 +791,53 @@ async def _handle_client(reader, writer):
             log.debug("[%s] not SOCKS5 (ver=%d)", label, hdr[0])
             writer.close()
             return
+
+        # Auth check
         nmethods = hdr[1]
-        await reader.readexactly(nmethods)
-        writer.write(b'\x05\x00')  # no-auth
-        await writer.drain()
+        auth_methods = await reader.readexactly(nmethods)
+
+        if not _auth_user and not _auth_password:
+            writer.write(b'\x05\x00')  # no-auth
+            await writer.drain()
+        elif _auth_user and _auth_password:
+            if b'\x02' not in auth_methods:
+                writer.write(b'\x05\xff')
+                await writer.drain()
+                writer.close()
+                return
+            writer.write(b'\x05\x02')  # username/password required
+            log.debug("[%s] auth required", label)
+
+            # Username/password subnegotiation
+            auth_hdr = await asyncio.wait_for(reader.readexactly(1), timeout=10)
+            if auth_hdr[0] != 1:
+                log.debug("[%s] bad auth request ver: %s", label, auth_hdr)
+                writer.write(b'\x01\x01')
+                await writer.drain()
+                writer.close()
+                return
+
+            ulen = (await reader.readexactly(1))[0]
+            client_username = (await reader.readexactly(ulen)).decode('utf-8', errors='ignore')
+            plen = (await reader.readexactly(1))[0]
+            client_password = (await reader.readexactly(plen)).decode('utf-8', errors='ignore')
+
+            if client_username != _auth_user or client_password != _auth_password:
+                log.warning("[%s] auth failed with creds: %s/%s", label, client_username, client_password)
+                writer.write(b'\x01\x01')
+                await writer.drain()
+                writer.close()
+                return
+
+            log.debug("[%s] auth success", label)
+            writer.write(b'\x01\x00')  # Success
+        else:
+            # If have some problems
+            writer.write(b'\x05\xff')
+            await writer.drain()
+            writer.close()
+            return
+
 
         # -- SOCKS5 CONNECT request --
         req = await asyncio.wait_for(reader.readexactly(4), timeout=10)
@@ -911,10 +958,20 @@ async def _handle_client(reader, writer):
                          label, dc, media_tag)
             return
 
-        # -- Try WebSocket via direct connection --
+        # -- Cooldown check --
         fail_until = _dc_fail_until.get(dc_key, 0)
-        ws_timeout = _WS_FAIL_TIMEOUT if now < fail_until else 10.0
+        if now < fail_until:
+            remaining = fail_until - now
+            log.debug("[%s] DC%d%s WS cooldown (%.0fs) -> TCP",
+                      label, dc, media_tag, remaining)
+            ok = await _tcp_fallback(reader, writer, dst, port, init,
+                                     label, dc=dc, is_media=is_media)
+            if ok:
+                log.info("[%s] DC%d%s TCP fallback closed",
+                         label, dc, media_tag)
+            return
 
+        # -- Try WebSocket via direct connection --
         domains = _ws_domains(dc, is_media)
         target = _dc_opt[dc]
         ws = None
@@ -932,7 +989,7 @@ async def _handle_client(reader, writer):
                          label, dc, media_tag, dst, port, url, target)
                 try:
                     ws = await RawWebSocket.connect(target, domain,
-                                                    timeout=ws_timeout)
+                                                    timeout=10)
                     all_redirects = False
                     break
                 except WsHandshakeError as exc:
@@ -1050,6 +1107,7 @@ async def _run(port: int, dc_opt: Dict[int, Optional[str]],
     log.info("=" * 60)
     log.info("  Configure Telegram Desktop:")
     log.info("    SOCKS5 proxy -> %s:%d  (no user/pass)", host, port)
+    log.info(f"    tg://socks/?server={host}&port={port}&user={quote(_auth_user)}&pass={quote(_auth_password)}")
     log.info("=" * 60)
 
     async def log_stats():
@@ -1086,6 +1144,20 @@ async def _run(port: int, dc_opt: Dict[int, Optional[str]],
     _server_instance = None
 
 
+def set_auth_credentials(username: str, password: str):
+    """Validate 'user' and 'password': both are specified, or both aren't"""
+    empty_user = username is None or not str(username).strip()
+    empty_pass = password is None or not str(password).strip()
+
+    if empty_user != empty_pass:
+        raise ValueError(
+            "Both --username (-u) and --password (-P) must be specified together, or neither should be used")
+
+    global _auth_user, _auth_password
+    _auth_user = username
+    _auth_password = password
+
+
 def parse_dc_ip_list(dc_ip_list: List[str]) -> Dict[int, str]:
     """Parse list of 'DC:IP' strings into {dc: ip} dict."""
     dc_opt: Dict[int, str] = {}
@@ -1112,23 +1184,25 @@ def run_proxy(port: int, dc_opt: Dict[int, str],
 def main():
     ap = argparse.ArgumentParser(
         description='Telegram Desktop WebSocket Bridge Proxy')
-    ap.add_argument('--port', type=int, default=DEFAULT_PORT,
-                    help=f'Listen port (default {DEFAULT_PORT})')
     ap.add_argument('--host', type=str, default='127.0.0.1',
                     help='Listen host (default 127.0.0.1)')
+    ap.add_argument('--port', type=int, default=DEFAULT_PORT,
+                    help=f'Listen port (default {DEFAULT_PORT})')
+    ap.add_argument('-u', '--user', type=str, default='',
+                    help='User for proxy')
+    ap.add_argument('-P', '--password', type=str, default='',
+                    help='Password for proxy')
     ap.add_argument('--dc-ip', metavar='DC:IP', action='append',
-                    default=[],
+                    default=['2:149.154.167.220', '4:149.154.167.220'],
                     help='Target IP for a DC, e.g. --dc-ip 1:149.154.175.205'
                          ' --dc-ip 2:149.154.167.220')
     ap.add_argument('-v', '--verbose', action='store_true',
                     help='Debug logging')
     args = ap.parse_args()
 
-    if not args.dc_ip:
-        args.dc_ip = ['2:149.154.167.220', '4:149.154.167.220']
-
     try:
         dc_opt = parse_dc_ip_list(args.dc_ip)
+        set_auth_credentials(args.user, args.password)
     except ValueError as e:
         log.error(str(e))
         sys.exit(1)
