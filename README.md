@@ -196,7 +196,7 @@ sed -i "s/^\([[:space:]]*\)list blocked_interfaces 'wan'/#\1&/" /etc/config/dock
 ```bash
 docker run -d --name tg-proxy -p 192.168.1.1:1080:1080 tg-proxy-flint:latest -u userx -P 123456
 ```
-#### Смотрим логи, практически все INFO на каждое соединение заменил на DEBUG, чтобы не тратить ресурс постоянной памяти
+#### Смотрим логи, практически все INFO на каждое соединение заменил на DEBUG, чтобы не тратить ресурс флэш-памяти
 ```bash
 docker logs tg-proxy
 ```
