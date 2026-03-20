@@ -184,6 +184,7 @@ docker load -i /tmp/tg-proxy-flint.tar && rm /tmp/tg-proxy-flint.tar
 * на закладке Advanced Settings оставляем только ip4
 
 #### Далее самое главное!!! Включаем WAN для Docker, информации крайне мало про эту срочку, времени на ее поиск ушло не мало
+Комментируем строчку list blocked_interfaces 'wan' в файле /etc/config/dockerd
 ```bash
 sed -i "s/^\([[:space:]]*\)list blocked_interfaces 'wan'/#\1&/" /etc/config/dockerd
 ```
